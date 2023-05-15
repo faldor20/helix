@@ -15,7 +15,7 @@
       - [Popup](#popup)
     - [Unimpaired](#unimpaired)
 - [Insert mode](#insert-mode)
-- [Select / extend mode](#select-extend-mode)
+- [Select / extend mode](#select--extend-mode)
 - [Picker](#picker)
 - [Prompt](#prompt)
 
@@ -32,8 +32,8 @@
 | Key                   | Description                                        | Command                     |
 | -----                 | -----------                                        | -------                     |
 | `h`, `Left`           | Move left                                          | `move_char_left`            |
-| `j`, `Down`           | Move down                                          | `move_line_down`            |
-| `k`, `Up`             | Move up                                            | `move_line_up`              |
+| `j`, `Down`           | Move down                                          | `move_visual_line_down`     |
+| `k`, `Up`             | Move up                                            | `move_visual_line_up`       |
 | `l`, `Right`          | Move right                                         | `move_char_right`           |
 | `w`                   | Move next word start                               | `move_next_word_start`      |
 | `b`                   | Move previous word start                           | `move_prev_word_start`      |
@@ -218,6 +218,8 @@ Jumps to various locations.
 | `n`   | Go to next buffer                                | `goto_next_buffer`         |
 | `p`   | Go to previous buffer                            | `goto_previous_buffer`     |
 | `.`   | Go to last modification in current file          | `goto_last_modification`   |
+| `j`   | Move down textual (instead of visual) line       | `move_line_down`           |
+| `k`   | Move up textual (instead of visual) line         | `move_line_up`             |
 
 #### Match mode
 
@@ -291,6 +293,8 @@ This layer is a kludge of mappings, mostly pickers.
 | `R`     | Replace selections by clipboard contents                                | `replace_selections_with_clipboard`        |
 | `/`     | Global search in workspace folder                                       | `global_search`                            |
 | `?`     | Open command palette                                                    | `command_palette`                          |
+| `e`     | Reveal current file in explorer                                         | `reveal_current_file`                      |
+
 
 > 💡 Global search displays results in a fuzzy picker, use `Space + '` to bring it back up after opening a file.
 
@@ -442,3 +446,7 @@ Keys to use within prompt, Remapping currently not supported.
 | `Tab`                                       | Select next completion item                                             |
 | `BackTab`                                   | Select previous completion item                                         |
 | `Enter`                                     | Open selected                                                           |
+
+# File explorer
+
+Press `?` to see keymaps. Remapping currently not supported.

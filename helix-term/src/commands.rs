@@ -347,6 +347,7 @@ impl MappableCommand {
         goto_first_nonwhitespace, "Goto first non-blank in line",
         trim_selections, "Trim whitespace from selections",
         extend_to_line_start, "Extend to line start",
+        extend_to_first_nonwhitespace, "Extend to first non-blank in line",
         extend_to_line_end, "Extend to line end",
         extend_to_line_end_newline, "Extend to line end",
         signature_help, "Show signature help",
@@ -472,6 +473,8 @@ impl MappableCommand {
         record_macro, "Record macro",
         replay_macro, "Replay macro",
         command_palette, "Open command palette",
+        open_or_focus_explorer, "Open or focus explorer",
+        reveal_current_file, "Reveal current file in explorer",
     );
 }
 
@@ -839,6 +842,24 @@ fn kill_to_line_end(cx: &mut Context) {
 
 fn goto_first_nonwhitespace(cx: &mut Context) {
     let (view, doc) = current!(cx.editor);
+
+    goto_first_nonwhitespace_impl(
+        view,
+        doc,
+        if cx.editor.mode == Mode::Select {
+            Movement::Extend
+        } else {
+            Movement::Move
+        },
+    )
+}
+
+fn extend_to_first_nonwhitespace(cx: &mut Context) {
+    let (view, doc) = current!(cx.editor);
+    goto_first_nonwhitespace_impl(view, doc, Movement::Extend)
+}
+
+fn goto_first_nonwhitespace_impl(view: &mut View, doc: &mut Document, movement: Movement) {
     let text = doc.text().slice(..);
 
     let selection = doc.selection(view.id).clone().transform(|range| {
@@ -846,7 +867,7 @@ fn goto_first_nonwhitespace(cx: &mut Context) {
 
         if let Some(pos) = find_first_non_whitespace_char(text.line(line)) {
             let pos = pos + text.line_to_char(line);
-            range.put_cursor(text, pos, cx.editor.mode == Mode::Select)
+            range.put_cursor(text, pos, movement == Movement::Extend)
         } else {
             range
         }
@@ -2446,6 +2467,49 @@ fn file_picker_in_current_directory(cx: &mut Context) {
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
+fn open_or_focus_explorer(cx: &mut Context) {
+    cx.callback = Some(Box::new(
+        |compositor: &mut Compositor, cx: &mut compositor::Context| {
+            if let Some(editor) = compositor.find::<ui::EditorView>() {
+                match editor.explorer.as_mut() {
+                    Some(explore) => explore.focus(),
+                    None => match ui::Explorer::new(cx) {
+                        Ok(explore) => editor.explorer = Some(explore),
+                        Err(err) => cx.editor.set_error(format!("{}", err)),
+                    },
+                }
+            }
+        },
+    ));
+}
+
+fn reveal_file(cx: &mut Context, path: Option<PathBuf>) {
+    cx.callback = Some(Box::new(
+        |compositor: &mut Compositor, cx: &mut compositor::Context| {
+            if let Some(editor) = compositor.find::<ui::EditorView>() {
+                (|| match editor.explorer.as_mut() {
+                    Some(explorer) => match path {
+                        Some(path) => explorer.reveal_file(path),
+                        None => explorer.reveal_current_file(cx),
+                    },
+                    None => {
+                        editor.explorer = Some(ui::Explorer::new(cx)?);
+                        if let Some(explorer) = editor.explorer.as_mut() {
+                            explorer.reveal_current_file(cx)?;
+                        }
+                        Ok(())
+                    }
+                })()
+                .unwrap_or_else(|err| cx.editor.set_error(err.to_string()))
+            }
+        },
+    ));
+}
+
+fn reveal_current_file(cx: &mut Context) {
+    reveal_file(cx, None)
+}
+
 fn buffer_picker(cx: &mut Context) {
     let current = view!(cx.editor).doc;
 
@@ -2454,6 +2518,7 @@ fn buffer_picker(cx: &mut Context) {
         path: Option<PathBuf>,
         is_modified: bool,
         is_current: bool,
+        focused_at: std::time::Instant,
     }
 
     impl ui::menu::Item for BufferMeta {
@@ -2486,14 +2551,21 @@ fn buffer_picker(cx: &mut Context) {
         path: doc.path().cloned(),
         is_modified: doc.is_modified(),
         is_current: doc.id() == current,
+        focused_at: doc.focused_at,
     };
 
+    let mut items = cx
+        .editor
+        .documents
+        .values()
+        .map(|doc| new_meta(doc))
+        .collect::<Vec<BufferMeta>>();
+
+    // mru
+    items.sort_unstable_by_key(|item| std::cmp::Reverse(item.focused_at));
+
     let picker = FilePicker::new(
-        cx.editor
-            .documents
-            .values()
-            .map(|doc| new_meta(doc))
-            .collect(),
+        items,
         (),
         |cx, meta, action| {
             cx.editor.switch(meta.id, action);
@@ -5084,7 +5156,8 @@ async fn shell_impl_async(
     let output = if let Some(mut stdin) = process.stdin.take() {
         let input_task = tokio::spawn(async move {
             if let Some(input) = input {
-                helix_view::document::to_writer(&mut stdin, encoding::UTF_8, &input).await?;
+                helix_view::document::to_writer(&mut stdin, (encoding::UTF_8, false), &input)
+                    .await?;
             }
             Ok::<_, anyhow::Error>(())
         });
